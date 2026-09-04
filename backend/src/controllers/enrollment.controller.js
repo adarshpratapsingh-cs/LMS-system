@@ -14,6 +14,14 @@ exports.enrollInCourse = async (req, res, next) => {
     if (!course) {
       return res.status(404).json({ success: false, error: 'Course not found' });
     }
+    // Check if course is active
+    if (course.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Course is not active'
+      });
+    }
+
 
     // Check if already enrolled
     const existingEnrollment = await prisma.enrollment.findUnique({
@@ -31,7 +39,7 @@ exports.enrollInCourse = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Instructor cannot enroll in their own course' });
     }
 
-    const { mentor } = req.body;
+    const { mentor } = req.body || {};
 
     const enrollment = await prisma.enrollment.create({
       data: {
