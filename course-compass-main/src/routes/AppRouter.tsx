@@ -5,6 +5,7 @@ import Courses from "@/pages/Courses/Courses";
 import CourseDetails from "@/pages/Courses/CourseDetails";
 import CreateCourse from "@/pages/Courses/CreateCourse";
 import Dashboard from "@/pages/Dashboard/Dashboard";
+import Bookmarks from "@/pages/Bookmarks/Bookmarks";
 import LearningPaths from "@/pages/Courses/LearningPaths";
 import LearningPathDetails from "@/pages/Courses/LearningPathDetails";
 import CoursePlayer from "@/pages/Courses/CoursePlayer";
@@ -37,6 +38,7 @@ export const AppRouter = () => {
             <Route path="/courses/:id" element={<CourseDetails />} />
             <Route path="/learn/:id" element={<CoursePlayer />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/bookmarks" element={<Bookmarks />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/learning-paths" element={<LearningPaths />} />
             <Route path="/learning-paths/:id" element={<LearningPathDetails />} />
