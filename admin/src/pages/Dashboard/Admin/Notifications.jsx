@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
+import { apiRequest } from '../../../utils/api';
 import { AnimatePresence } from 'framer-motion';
 import {
   MdNotificationsOff,
@@ -11,8 +12,8 @@ import RealtimeBanner from '../../../components/admin/notifications/RealtimeBann
 import NotificationsToolbar from '../../../components/admin/notifications/NotificationsToolbar';
 import NotificationCard from '../../../components/admin/notifications/NotificationCard';
 import NotificationDetailDrawer from '../../../components/admin/notifications/NotificationDetailDrawer';
+
 import {
-  initialNotifications,
   CATEGORY_META,
   TIMELINE_ORDER,
   PRIORITY_META,
@@ -20,7 +21,7 @@ import {
 } from '../../../components/admin/notifications/constants';
 
 const Notifications = () => {
-  const [notifs, setNotifs] = useState(initialNotifications);
+  const [notifs, setNotifs] = useState([]);
   const [search, setSearch] = useState('');
   const [primaryFilter, setPrimaryFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -38,102 +39,277 @@ const Notifications = () => {
       setNewCount((c) => (c < 5 ? c + 1 : c));
       setRealtimeBanner(true);
     }, 45000);
+
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const response = await apiRequest('/v1/notifications');
+
+        const notifications = (response.data || []).map((n) => {
+          const createdAt = new Date(n.createdAt);
+          const now = new Date();
+
+          const today = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+          );
+
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+
+          const weekAgo = new Date(today);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+
+          let timelineGroup = 'Earlier';
+
+          if (createdAt >= today) {
+            timelineGroup = 'Today';
+          } else if (createdAt >= yesterday) {
+            timelineGroup = 'Yesterday';
+          } else if (createdAt >= weekAgo) {
+            timelineGroup = 'This Week';
+          }
+
+          return {
+            ...n,
+            desc: n.description,
+            time: createdAt.toLocaleString(),
+            timelineGroup,
+          };
+        });
+
+        setNotifs(notifications);
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      }
+    };
+
+    fetchNotifications();
+  }, []);
+
   const activeNotifs = useMemo(
-    () => notifs.filter((n) => (showArchived ? n.archived : !n.archived)),
+    () =>
+      notifs.filter((n) =>
+        showArchived ? n.archived : !n.archived,
+      ),
     [notifs, showArchived],
   );
 
   const stats = useMemo(() => {
     const total = activeNotifs.length;
     const unread = activeNotifs.filter((n) => !n.read).length;
+
     const highPriority = activeNotifs.filter(
       (n) => n.priority === 'critical' || n.priority === 'high',
     ).length;
+
     const pinned = activeNotifs.filter((n) => n.pinned).length;
-    return { total, unread, highPriority, pinned };
+
+    return {
+      total,
+      unread,
+      highPriority,
+      pinned,
+    };
   }, [activeNotifs]);
 
   const activitySummary = useMemo(() => {
-    const critical = activeNotifs.filter((n) => !n.read && n.priority === 'critical').length;
+    const critical = activeNotifs.filter(
+      (n) => !n.read && n.priority === 'critical',
+    ).length;
+
     if (stats.unread === 0) {
       return 'Your inbox is clear. All platform alerts have been reviewed — check archived items or adjust filters to browse history.';
     }
+
     if (critical > 0) {
-      return `${stats.unread} unread alert${stats.unread !== 1 ? 's' : ''} across your workspace — ${critical} critical item${critical !== 1 ? 's' : ''} need immediate attention. Triage with filters or bulk actions below.`;
+      return `${stats.unread} unread alert${
+        stats.unread !== 1 ? 's' : ''
+      } across your workspace — ${critical} critical item${
+        critical !== 1 ? 's' : ''
+      } need immediate attention. Triage with filters or bulk actions below.`;
     }
-    return `${stats.unread} unread alert${stats.unread !== 1 ? 's' : ''} in your inbox. Use search, category filters, and timeline view to triage course, payment, and system updates efficiently.`;
+
+    return `${stats.unread} unread alert${
+      stats.unread !== 1 ? 's' : ''
+    } in your inbox. Use search, category filters, and timeline view to triage course, payment, and system updates efficiently.`;
   }, [activeNotifs, stats.unread]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return activeNotifs.filter((n) => {
-      if (q && !`${n.title} ${n.desc}`.toLowerCase().includes(q)) return false;
+      if (
+        q &&
+        !`${n.title} ${n.desc}`.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
 
       if (primaryFilter === 'Read/Unread') {
         if (readFilter === 'unread' && n.read) return false;
         if (readFilter === 'read' && !n.read) return false;
       } else if (primaryFilter === 'Priority') {
-        if (priorityFilter !== 'all' && n.priority !== priorityFilter) return false;
+        if (
+          priorityFilter !== 'all' &&
+          n.priority !== priorityFilter
+        ) {
+          return false;
+        }
       } else if (primaryFilter !== 'All') {
         const catKey = Object.entries(CATEGORY_META).find(
           ([, m]) => m.filter === primaryFilter,
         )?.[0];
-        if (catKey && n.category !== catKey) return false;
+
+        if (catKey && n.category !== catKey) {
+          return false;
+        }
       }
 
       return true;
     });
-  }, [activeNotifs, search, primaryFilter, priorityFilter, readFilter]);
+  }, [
+    activeNotifs,
+    search,
+    primaryFilter,
+    priorityFilter,
+    readFilter,
+  ]);
 
   const pinnedList = filtered.filter((n) => n.pinned);
   const inboxList = filtered.filter((n) => !n.pinned);
 
   const timelineGroups = useMemo(() => {
     const map = {};
+
     TIMELINE_ORDER.forEach((g) => {
       map[g] = [];
     });
+
     filtered.forEach((n) => {
-      const g = TIMELINE_ORDER.includes(n.timelineGroup) ? n.timelineGroup : 'Earlier';
+      const g = TIMELINE_ORDER.includes(n.timelineGroup)
+        ? n.timelineGroup
+        : 'Earlier';
+
       map[g].push(n);
     });
+
     return map;
   }, [filtered]);
 
   const updateNotif = useCallback((id, patch) => {
-    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-    setActiveNotif((prev) => (prev?.id === id ? { ...prev, ...patch } : prev));
+    setNotifs((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, ...patch } : n,
+      ),
+    );
+
+    setActiveNotif((prev) =>
+      prev?.id === id
+        ? { ...prev, ...patch }
+        : prev,
+    );
   }, []);
 
-  const markRead = (id) => updateNotif(id, { read: true });
-  const togglePin = (id) =>
-    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, pinned: !n.pinned } : n)));
-  const archiveNotif = (id) => updateNotif(id, { archived: true });
-  const deleteNotif = (id) => {
-    setNotifs((prev) => prev.filter((n) => n.id !== id));
+ const markRead = async (id) => {
+  try {
+    const response = await apiRequest(`/v1/notifications/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        read: true,
+      }),
+    });
+
+    updateNotif(id, response.data);
+  } catch (error) {
+    console.error('Failed to mark notification as read:', error);
+  }
+};
+
+ const togglePin = async (id) => {
+  const notification = notifs.find((n) => n.id === id);
+
+  if (!notification) return;
+
+  try {
+    const response = await apiRequest(`/v1/notifications/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        pinned: !notification.pinned,
+      }),
+    });
+
+    updateNotif(id, response.data);
+  } catch (error) {
+    console.error('Failed to toggle notification pin:', error);
+  }
+};
+
+const archiveNotif = async (id) => {
+  try {
+    const response = await apiRequest(`/v1/notifications/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        archived: true,
+      }),
+    });
+
+    updateNotif(id, response.data);
+  } catch (error) {
+    console.error('Failed to archive notification:', error);
+  }
+};
+
+  const deleteNotif = async (id) => {
+  try {
+    await apiRequest(`/v1/notifications/${id}`, {
+      method: 'DELETE',
+    });
+
+    setNotifs((prev) =>
+      prev.filter((n) => n.id !== id),
+    );
+
     setSelectedIds((s) => {
       const n = new Set(s);
       n.delete(id);
       return n;
     });
-    if (activeNotif?.id === id) setActiveNotif(null);
-  };
 
+    if (activeNotif?.id === id) {
+      setActiveNotif(null);
+    }
+  } catch (error) {
+    console.error('Failed to delete notification:', error);
+  }
+};
   const markAllRead = () => {
     setNotifs((prev) =>
-      prev.map((n) => (showArchived ? n : !n.archived ? { ...n, read: true } : n)),
+      prev.map((n) =>
+        showArchived
+          ? n
+          : !n.archived
+            ? { ...n, read: true }
+            : n,
+      ),
     );
   };
 
   const clearAll = () => {
     if (showArchived) {
-      setNotifs((prev) => prev.filter((n) => !n.archived));
+      setNotifs((prev) =>
+        prev.filter((n) => !n.archived),
+      );
     } else {
-      setNotifs((prev) => prev.filter((n) => n.archived));
+      setNotifs((prev) =>
+        prev.filter((n) => n.archived),
+      );
     }
+
     setSelectedIds(new Set());
     setActiveNotif(null);
   };
@@ -141,28 +317,52 @@ const Notifications = () => {
   const toggleSelect = (id) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
       return next;
     });
   };
 
   const selectAllVisible = () => {
-    setSelectedIds(new Set(filtered.map((n) => n.id)));
+    setSelectedIds(
+      new Set(filtered.map((n) => n.id)),
+    );
   };
 
   const bulkMarkRead = () => {
-    setNotifs((prev) => prev.map((n) => (selectedIds.has(n.id) ? { ...n, read: true } : n)));
+    setNotifs((prev) =>
+      prev.map((n) =>
+        selectedIds.has(n.id)
+          ? { ...n, read: true }
+          : n,
+      ),
+    );
+
     setSelectedIds(new Set());
   };
 
   const bulkArchive = () => {
-    setNotifs((prev) => prev.map((n) => (selectedIds.has(n.id) ? { ...n, archived: true } : n)));
+    setNotifs((prev) =>
+      prev.map((n) =>
+        selectedIds.has(n.id)
+          ? { ...n, archived: true }
+          : n,
+      ),
+    );
+
     setSelectedIds(new Set());
   };
 
   const bulkDelete = () => {
-    setNotifs((prev) => prev.filter((n) => !selectedIds.has(n.id)));
+    setNotifs((prev) =>
+      prev.filter((n) => !selectedIds.has(n.id)),
+    );
+
     setSelectedIds(new Set());
   };
 
@@ -173,8 +373,14 @@ const Notifications = () => {
 
   const handlePrimaryFilterChange = (f) => {
     setPrimaryFilter(f);
-    if (f !== 'Priority') setPriorityFilter('all');
-    if (f !== 'Read/Unread') setReadFilter('all');
+
+    if (f !== 'Priority') {
+      setPriorityFilter('all');
+    }
+
+    if (f !== 'Read/Unread') {
+      setReadFilter('all');
+    }
   };
 
   const handleSelectionModeToggle = () => {
@@ -243,7 +449,9 @@ const Notifications = () => {
         onBulkMarkRead={bulkMarkRead}
         onBulkArchive={bulkArchive}
         onBulkDelete={bulkDelete}
-        onClearSelection={() => setSelectedIds(new Set())}
+        onClearSelection={() =>
+          setSelectedIds(new Set())
+        }
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto]">
@@ -251,64 +459,103 @@ const Notifications = () => {
           {filtered.length === 0 ? (
             <div
               className="rounded-2xl border border-dashed py-16 text-center"
-              style={{ borderColor: 'var(--admin-border)' }}
+              style={{
+                borderColor: 'var(--admin-border)',
+              }}
             >
-              <MdNotificationsOff size={40} className="mx-auto mb-3 admin-text-muted" />
-              <p className="text-sm admin-text-muted">No notifications match your filters.</p>
+              <MdNotificationsOff
+                size={40}
+                className="mx-auto mb-3 admin-text-muted"
+              />
+
+              <p className="text-sm admin-text-muted">
+                No notifications match your filters.
+              </p>
             </div>
           ) : viewMode === 'inbox' ? (
             <>
               {pinnedList.length > 0 && (
                 <section>
                   <div className="mb-2 flex items-center gap-2">
-                    <MdFiberManualRecord className="text-amber-500" size={8} />
+                    <MdFiberManualRecord
+                      className="text-amber-500"
+                      size={8}
+                    />
+
                     <span className="text-[10px] font-bold uppercase tracking-widest admin-text-muted">
                       Pinned
                     </span>
                   </div>
-                  <div className="space-y-2">{renderList(pinnedList)}</div>
+
+                  <div className="space-y-2">
+                    {renderList(pinnedList)}
+                  </div>
                 </section>
               )}
+
               <section>
                 {pinnedList.length > 0 && (
                   <div className="mb-2 flex items-center gap-2">
-                    <MdFiberManualRecord className="admin-text-muted" size={8} />
+                    <MdFiberManualRecord
+                      className="admin-text-muted"
+                      size={8}
+                    />
+
                     <span className="text-[10px] font-bold uppercase tracking-widest admin-text-muted">
                       Inbox
                     </span>
                   </div>
                 )}
-                <div className="space-y-2">{renderList(inboxList)}</div>
+
+                <div className="space-y-2">
+                  {renderList(inboxList)}
+                </div>
               </section>
             </>
           ) : (
             <div className="relative space-y-8 pl-4 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-gradient-to-b before:from-[#F97316]/50 before:via-[var(--admin-border-subtle)] before:to-transparent">
               {TIMELINE_ORDER.map((group) => {
                 const items = timelineGroups[group];
-                if (!items?.length) return null;
+
+                if (!items?.length) {
+                  return null;
+                }
+
                 return (
-                  <section key={group} className="relative">
+                  <section
+                    key={group}
+                    className="relative"
+                  >
                     <div className="mb-3 flex items-center gap-3">
                       <span
                         className="relative z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2"
                         style={{
                           borderColor: '#F97316',
-                          background: 'var(--admin-surface-raised)',
+                          background:
+                            'var(--admin-surface-raised)',
                         }}
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
                       </span>
+
                       <h3 className="text-xs font-bold uppercase tracking-widest admin-text-secondary">
                         {group}
                       </h3>
+
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-semibold admin-text-muted"
-                        style={{ background: 'var(--admin-stat-pill-bg)' }}
+                        style={{
+                          background:
+                            'var(--admin-stat-pill-bg)',
+                        }}
                       >
                         {items.length}
                       </span>
                     </div>
-                    <div className="ml-6 space-y-2">{renderList(items)}</div>
+
+                    <div className="ml-6 space-y-2">
+                      {renderList(items)}
+                    </div>
                   </section>
                 );
               })}
@@ -333,19 +580,27 @@ const Notifications = () => {
       <div
         className="flex flex-wrap items-center gap-4 rounded-xl border px-4 py-3"
         style={{
-          borderColor: 'var(--admin-border-subtle)',
+          borderColor:
+            'var(--admin-border-subtle)',
           background: 'var(--admin-surface)',
         }}
       >
         <span className="text-[10px] font-bold uppercase tracking-wider admin-text-muted">
           Priority indicators
         </span>
+
         {PRIORITIES.map((p) => (
-          <span key={p} className="inline-flex items-center gap-1.5 text-[11px] admin-text-muted">
+          <span
+            key={p}
+            className="inline-flex items-center gap-1.5 text-[11px] admin-text-muted"
+          >
             <span
               className="h-2 w-2 rounded-full"
-              style={{ background: PRIORITY_META[p].iconBg }}
+              style={{
+                background: PRIORITY_META[p].iconBg,
+              }}
             />
+
             {PRIORITY_META[p].label}
           </span>
         ))}

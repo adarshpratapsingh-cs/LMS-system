@@ -1,4 +1,5 @@
 const { prisma } = require('../config/db');
+const { createNotificationForAdmins } = require('../services/notification.service');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const getTrend = (curr, prev) => {
@@ -878,6 +879,14 @@ exports.updateCourseStatus = async (req, res, next) => {
       data: updateData,
       include: { instructor: { select: { id: true, name: true } } }
     });
+    if (updateData.status === 'approved' && existingCourse.status !== 'approved') {
+      await createNotificationForAdmins({
+        category: 'course',
+        priority: 'high',
+        title: 'Course Approved',
+        description: `"${course.title}" has been approved and is now live.`
+      });
+    }
     res.status(200).json({ success: true, data: course });
   } catch (error) {
     next(error);

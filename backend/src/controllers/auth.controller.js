@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { prisma } = require('../config/db');
 const { generateToken } = require('../utils/jwt.util');
 const { addEmailJob } = require('../queues/email.queue');
+const { createNotificationForAdmins } = require('../services/notification.service');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -35,7 +36,12 @@ exports.register = async (req, res, next) => {
         status: userStatus
       }
     });
-
+    await createNotificationForAdmins({
+      category: 'student',
+      priority: 'medium',
+      title: 'New Student Registered',
+      description: `${name} has registered on the LMS.`
+    });
     // Don't issue token yet — user needs admin approval (except admins)
     if (userStatus === 'pending') {
       return res.status(201).json({

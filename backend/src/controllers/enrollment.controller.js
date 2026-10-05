@@ -1,5 +1,6 @@
 const { prisma } = require('../config/db');
 const { clearCache } = require('../middlewares/cache.middleware');
+const { createNotificationForAdmins } = require('../services/notification.service');
 
 // @desc    Enroll in a course
 // @route   POST /api/enrollments/:courseId
@@ -39,6 +40,12 @@ exports.enrollInCourse = async (req, res, next) => {
         courseId,
         mentor: mentor || null
       }
+    });
+    await createNotificationForAdmins({
+      category: 'course',
+      priority: 'medium',
+      title: 'New Course Enrollment',
+      description: `${req.user.name} enrolled in ${course.title}.`
     });
 
     // Invalidate course cache to update enrollment counts

@@ -73,6 +73,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 const authRoutesV1 = require('./routes/v1/auth.routes');
 const courseRoutesV1 = require('./routes/v1/courses.routes');
 const enrollmentRoutesV1 = require('./routes/v1/enrollment.routes');
+const notificationRoutesV1 = require('./routes/v1/notifications.routes');
 const userRoutesV1 = require('./routes/v1/users.routes');
 const adminRoutesV1 = require('./routes/v1/admin.routes');
 const profileRoutesV1 = require('./routes/v1/profile.routes');
@@ -82,6 +83,8 @@ const uploadRoutesV1 = require('./routes/v1/upload.routes');
 app.use('/api/v1/auth', authRoutesV1);
 app.use('/api/v1/courses', courseRoutesV1);
 app.use('/api/v1/enrollments', enrollmentRoutesV1);
+app.use('/api/v1/notifications', notificationRoutesV1);
+
 app.use('/api/v1/users', userRoutesV1);
 app.use('/api/v1/admin', adminRoutesV1);
 app.use('/api/v1/profile', profileRoutesV1);
